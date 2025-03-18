@@ -9,8 +9,7 @@
 </p>
 
 <p align="center">
-
-  <a href="https://github.com/louistrue/ifc-playground/blob/main/LICENSE">
+  <a href="https://github.com/louistrue/ifc-playground/blob/master/LICENSE">
     <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3" />
   </a>
   <a href="https://nextjs.org/">
