@@ -23,48 +23,40 @@ export function ResultsViewer({ results }: ResultsViewerProps) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<Record<string, string>>({});
   const [prevResultsId, setPrevResultsId] = useState<string | null>(null);
+  const [chartData, setChartData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  if (!results) {
-    return (
-      <Card className="bg-black/50 dark:bg-gray-900/50 border border-pink-500/50 dark:border-cyan-500/50 backdrop-blur-sm rounded-xl overflow-hidden h-full flex items-center justify-center">
-        <p className="text-gray-400">
-          No results to display. Run a script to see results here.
-        </p>
-      </Card>
-    );
-  }
+  // Create these variables safely regardless of whether results is null
+  const resultsFingerprint = results
+    ? JSON.stringify({
+        hasGeometry: !!results.geometry,
+        hasTypeCounts: !!results.type_counts,
+        hasSpatialTree: !!results.spatial_tree,
+        hasMaterials: !!results.material_usage,
+        hasProperties: !!results.properties,
+      })
+    : null;
 
-  // Create a "fingerprint" of the current results structure to detect changes
-  const resultsFingerprint = JSON.stringify({
-    hasGeometry: !!results.geometry,
-    hasTypeCounts: !!results.type_counts,
-    hasSpatialTree: !!results.spatial_tree,
-    hasMaterials: !!results.material_usage,
-    hasProperties: !!results.properties,
-  });
+  // Safe variables that will be used in hooks
+  const hasGeometry = results ? !!results.geometry : false;
+  const hasTypeCounts = results ? !!results.type_counts : false;
+  const hasSpatialTree = results ? !!results.spatial_tree : false;
+  const hasMaterials = results ? !!results.material_usage : false;
+  const hasProperties = results ? !!results.properties : false;
+  const uiMetadata = results ? results.__ui_metadata : undefined;
 
   // Reset state when results structure changes
   useEffect(() => {
-    if (prevResultsId !== resultsFingerprint) {
+    if (prevResultsId !== resultsFingerprint && resultsFingerprint !== null) {
       setPrevResultsId(resultsFingerprint);
       setActiveTab(null); // Reset active tab to trigger auto-selection
       setViewMode({}); // Reset view modes to trigger defaults
     }
   }, [resultsFingerprint, prevResultsId]);
 
-  // Determine which tabs to show based on available data
-  const hasGeometry = !!results.geometry;
-  const hasTypeCounts = !!results.type_counts;
-  const hasSpatialTree = !!results.spatial_tree;
-  const hasMaterials = !!results.material_usage;
-  const hasProperties = !!results.properties;
-
-  // Check for UI metadata
-  const uiMetadata = results.__ui_metadata;
-
   // Set default active tab based on available data - prioritize structured views
   useEffect(() => {
-    if (activeTab === null) {
+    if (activeTab === null && results) {
       // Priority order for default tab
       if (hasProperties) {
         setActiveTab("properties");
@@ -78,7 +70,14 @@ export function ResultsViewer({ results }: ResultsViewerProps) {
         setActiveTab("raw");
       }
     }
-  }, [activeTab, hasProperties, hasSpatialTree, hasMaterials, hasTypeCounts]);
+  }, [
+    activeTab,
+    hasProperties,
+    hasSpatialTree,
+    hasMaterials,
+    hasTypeCounts,
+    results,
+  ]);
 
   // Initialize view mode if metadata exists
   useEffect(() => {
@@ -105,6 +104,18 @@ export function ResultsViewer({ results }: ResultsViewerProps) {
     }
   }, [uiMetadata, viewMode, hasProperties, hasMaterials, hasSpatialTree]);
 
+  // Process results data if needed
+  useEffect(() => {
+    if (results) {
+      if (results.type_counts) {
+        // Process type counts
+      }
+      if (results.material_counts) {
+        // Process material data
+      }
+    }
+  }, [results]);
+
   // Handle view mode change
   const handleViewModeChange = (tab: string, mode: string) => {
     setViewMode((prev) => ({ ...prev, [tab]: mode }));
@@ -112,6 +123,17 @@ export function ResultsViewer({ results }: ResultsViewerProps) {
 
   // Get current view mode for active tab
   const getCurrentViewMode = (tab: string) => viewMode[tab] || "raw";
+
+  // Now that all hooks are called, we can safely use conditional returns
+  if (!results) {
+    return (
+      <Card className="bg-black/50 dark:bg-gray-900/50 border border-pink-500/50 dark:border-cyan-500/50 backdrop-blur-sm rounded-xl overflow-hidden h-full flex items-center justify-center">
+        <p className="text-gray-400">
+          No results to display. Run a script to see results here.
+        </p>
+      </Card>
+    );
+  }
 
   // Don't render until we've determined the active tab
   if (!activeTab) {

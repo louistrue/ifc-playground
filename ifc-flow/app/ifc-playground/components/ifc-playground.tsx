@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   FileUp,
   Play,
@@ -18,7 +17,7 @@ import {
   Trash2,
   BarChart,
   Edit,
-  X,
+  Github,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IFCViewer } from "./ifc-viewer";
@@ -64,11 +63,7 @@ export function IFCPlayground() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [settings, setSettings] = useState<SettingsData>({
-    autoRunScripts: false,
     defaultTab: "viewer",
-    pythonVersion: "3.11",
-    showDebugInfo: false,
-    maxConsoleLines: 1000,
   });
 
   // Add a ref for the FileManager component
@@ -127,10 +122,12 @@ export function IFCPlayground() {
     if (storedSettings) {
       try {
         const parsedSettings = JSON.parse(storedSettings);
-        setSettings(parsedSettings);
-
-        // Apply default tab from settings
+        // Only apply the defaultTab setting from stored settings
         if (parsedSettings.defaultTab) {
+          setSettings((prev) => ({
+            ...prev,
+            defaultTab: parsedSettings.defaultTab,
+          }));
           setActiveTab(parsedSettings.defaultTab);
         }
       } catch (e) {
@@ -276,12 +273,13 @@ except Exception as e:
   // Handle file selection
   const handleFileSelected = (file: File) => {
     setSelectedFile(file);
+    console.log(
+      `[IFCPlayground] File selected for viewer: ${file.name}, size: ${file.size} bytes`
+    );
     addToConsole(`File selected: ${file.name}`);
 
-    // Auto-run script if enabled in settings and a script is selected
-    if (settings.autoRunScripts && selectedScriptId && !isProcessing) {
-      setTimeout(() => runScript(), 500); // Small delay to allow UI to update
-    }
+    // Switch to viewer tab
+    setActiveTab("viewer");
   };
 
   // Handle script selection
@@ -289,11 +287,6 @@ except Exception as e:
     setSelectedScript(scriptName);
     setSelectedScriptId(scriptId);
     addToConsole(`Script selected: ${scriptName}`);
-
-    // Auto-run script if enabled in settings and a file is selected
-    if (settings.autoRunScripts && selectedFile && !isProcessing) {
-      setTimeout(() => runScript(), 500); // Small delay to allow UI to update
-    }
   };
 
   // Handle script editing
@@ -307,15 +300,18 @@ except Exception as e:
 
   // Handle settings save
   const handleSaveSettings = (newSettings: SettingsData) => {
-    setSettings(newSettings);
+    // Preserve the existing settings values except for defaultTab
+    const updatedSettings = {
+      ...settings,
+      defaultTab: newSettings.defaultTab,
+    };
+
+    setSettings(updatedSettings);
     addToConsole("Settings updated");
 
-    // Apply any immediate settings changes
-    if (
-      newSettings.showDebugInfo !== settings.showDebugInfo &&
-      newSettings.showDebugInfo
-    ) {
-      setShowDebugConsole(true);
+    // Apply default tab setting if needed
+    if (updatedSettings.defaultTab !== settings.defaultTab) {
+      setActiveTab(updatedSettings.defaultTab);
     }
   };
 
@@ -441,7 +437,7 @@ except Exception as e:
             <Button
               variant="outline"
               size="sm"
-              className="border-blue-400 text-blue-400 hover:bg-blue-950 hover:text-blue-300"
+              className="border-pink-400 text-pink-400 hover:bg-pink-950 hover:text-pink-300 dark:border-cyan-400 dark:text-cyan-400 dark:hover:bg-cyan-950 dark:hover:text-cyan-300"
               onClick={() => setShowInfo(true)}
             >
               <Info className="sm:mr-2 h-4 w-4" />
@@ -455,15 +451,6 @@ except Exception as e:
             >
               <Settings className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Settings</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-yellow-400 text-yellow-400 hover:bg-yellow-950 hover:text-yellow-300 dark:border-amber-400 dark:text-amber-400 dark:hover:bg-amber-950 dark:hover:text-amber-300"
-              onClick={() => setShowDebugConsole(!showDebugConsole)}
-            >
-              <span className="hidden sm:inline">Debug</span>
-              <span className="sm:hidden">D</span>
             </Button>
           </div>
         </div>
@@ -557,36 +544,28 @@ except Exception as e:
               </TabsList>
 
               <div className="mt-3 md:mt-4 flex-grow flex flex-col min-h-0">
-                <TabsContent value="viewer" className="flex-grow h-full m-0">
+                <div
+                  className={`flex-grow h-full ${
+                    activeTab === "viewer" ? "block" : "hidden"
+                  }`}
+                >
                   <Card className="bg-black/50 border border-pink-500/50 backdrop-blur-sm rounded-xl overflow-hidden dark:bg-gray-900/50 dark:border-cyan-500/50 h-full flex flex-col">
                     <div className="p-3 md:p-4 bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-b border-pink-500/50 dark:from-blue-900/50 dark:to-cyan-900/50 dark:border-cyan-500/50 flex justify-between items-center shrink-0">
                       <h2 className="text-xl font-bold text-cyan-400 dark:text-blue-400">
                         IFC Viewer
                       </h2>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-cyan-400 text-cyan-400 hover:bg-cyan-950 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-cyan-400 text-cyan-400 hover:bg-cyan-950 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                      </div>
                     </div>
                     <div className="relative flex-grow min-h-0">
-                      <IFCViewer />
+                      <IFCViewer ifcData={selectedFile} />
                     </div>
                   </Card>
-                </TabsContent>
+                </div>
 
-                <TabsContent value="console" className="flex-grow h-full m-0">
+                <div
+                  className={`flex-grow h-full ${
+                    activeTab === "console" ? "block" : "hidden"
+                  }`}
+                >
                   <Card className="bg-black/50 border border-pink-500/50 backdrop-blur-sm rounded-xl overflow-hidden dark:bg-gray-900/50 dark:border-cyan-500/50 h-full flex flex-col">
                     <div className="p-3 md:p-4 bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-b border-pink-500/50 dark:from-blue-900/50 dark:to-cyan-900/50 dark:border-cyan-500/50 flex justify-between items-center shrink-0">
                       <h2 className="text-xl font-bold text-cyan-400 dark:text-blue-400">
@@ -622,22 +601,30 @@ except Exception as e:
                       )}
                     </div>
                   </Card>
-                </TabsContent>
+                </div>
 
                 {/* Add the new Script Editor tab */}
-                <TabsContent value="editor" className="flex-grow h-full m-0">
+                <div
+                  className={`flex-grow h-full ${
+                    activeTab === "editor" ? "block" : "hidden"
+                  }`}
+                >
                   <Card className="bg-black/50 dark:bg-gray-900/50 border border-pink-500/50 dark:border-cyan-500/50 backdrop-blur-sm rounded-xl overflow-hidden h-full flex flex-col min-h-[calc(100vh-150px)]">
                     <ScriptEditor
                       scriptId={selectedScriptId}
                       onScriptChange={handleScriptChange}
                     />
                   </Card>
-                </TabsContent>
+                </div>
 
                 {/* Add the TabsContent for results */}
-                <TabsContent value="results" className="flex-grow h-full m-0">
+                <div
+                  className={`flex-grow h-full ${
+                    activeTab === "results" ? "block" : "hidden"
+                  }`}
+                >
                   <ResultsViewer results={results} />
-                </TabsContent>
+                </div>
               </div>
             </Tabs>
           </div>
@@ -652,9 +639,18 @@ except Exception as e:
         <FallbackMode file={selectedFile} onClose={handleCloseSimpleFallback} />
       )}
       <footer className="relative z-10 p-3 md:p-4 border-t border-pink-500/50 dark:border-cyan-500/50 bg-black/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
-        <div className="container-fluid mx-auto text-center text-gray-400 text-sm">
-          <p>
-            IFC Playground © {new Date().getFullYear()} | Powered by{" "}
+        <div className="container-fluid mx-auto flex justify-end items-center text-gray-400 text-sm">
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/louistrue/ifc-playground"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center text-green-400 hover:text-cyan-400 dark:text-green-400 dark:hover:text-blue-400 transition-colors mr-3"
+            >
+              <Github className="h-4 w-4 mr-1" />
+              <span>IFC Playground</span>
+            </a>
+            <span>Powered by</span>
             <a
               href="https://docs.ifcopenshell.org/"
               target="_blank"
@@ -671,6 +667,22 @@ except Exception as e:
             >
               WASM
             </a>{" "}
+            <a
+              href="https://github.com/ThatOpen/engine_web-ifc"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-400 hover:text-cyan-400 dark:text-green-400 dark:hover:text-blue-400 transition-colors"
+            >
+              Engine web-ifc
+            </a>{" "}
+            <a
+              href="https://threejs.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-cyan-400 dark:text-blue-400 dark:hover:text-blue-400 transition-colors"
+            >
+              Three.js
+            </a>{" "}
             | Created by{" "}
             <a
               href="https://www.lt.plus/"
@@ -680,7 +692,7 @@ except Exception as e:
             >
               lt.plus
             </a>
-          </p>
+          </div>
         </div>
       </footer>
       {showDebugConsole && (

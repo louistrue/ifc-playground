@@ -32,13 +32,22 @@ export const FileManager = forwardRef<FileManagerRef, FileManagerProps>(
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
         const newFiles = Array.from(e.target.files);
+        console.log(
+          `File(s) selected: ${newFiles.map((f) => f.name).join(", ")}`
+        );
         setFiles((prev) => [...prev, ...newFiles]);
       }
     };
 
     const handleSelectFile = (index: number) => {
       setSelectedFileIndex(index);
-      onFileSelected(files[index]);
+      const selectedFile = files[index];
+      console.log(
+        `[FileManager] File selected for processing: ${selectedFile.name}, size: ${selectedFile.size} bytes`
+      );
+      if (onFileSelected) {
+        onFileSelected(selectedFile);
+      }
     };
 
     const handleDeleteFile = (index: number, e: React.MouseEvent) => {
