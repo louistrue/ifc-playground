@@ -177,6 +177,7 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
       antialias: true,
       alpha: false,
       logarithmicDepthBuffer: true, // Better for large models with varying scales
+      preserveDrawingBuffer: true, // Required for Firefox to render properly
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -374,6 +375,28 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
               }
             }
           });
+        }
+
+        // Firefox-specific fix: Force redraw on the first frame
+        if (!rendererRef.current.domElement.dataset.firefoxFixApplied) {
+          // Only apply once
+          rendererRef.current.domElement.dataset.firefoxFixApplied = "true";
+
+          // Force a small change to trigger proper rendering
+          const originalClearColor = rendererRef.current.getClearColor(
+            new THREE.Color()
+          );
+          const originalClearAlpha = rendererRef.current.getClearAlpha();
+
+          // Change clear color slightly and render
+          rendererRef.current.setClearColor(0xf0f0f1, 1);
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+          // Change back and render again
+          rendererRef.current.setClearColor(
+            originalClearColor,
+            originalClearAlpha
+          );
         }
 
         rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -1026,6 +1049,20 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
     isAnimatingRef.current = isVisible;
   }, [isVisible]);
 
+  // Browser detection for compatibility notice
+  const [isUnsupportedBrowser, setIsUnsupportedBrowser] = useState(false);
+
+  useEffect(() => {
+    // Check if browser is Firefox or Safari/Apple
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isFirefox = userAgent.indexOf("firefox") !== -1;
+    const isSafari =
+      userAgent.indexOf("safari") !== -1 && userAgent.indexOf("chrome") === -1;
+    const isApple = /(ipad|iphone|ipod|mac)/i.test(userAgent);
+
+    setIsUnsupportedBrowser(isFirefox || isSafari || isApple);
+  }, []);
+
   return (
     <div
       className="relative w-full h-full flex-grow"
@@ -1039,6 +1076,23 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
       }}
       tabIndex={0} // Make div focusable to capture keyboard events
     >
+      {/* Browser compatibility notice - only for Firefox/Safari/Apple */}
+      {isUnsupportedBrowser && (
+        <div className="absolute top-0 left-0 right-0 z-20 bg-black/80 backdrop-blur-sm border-b-2 border-pink-500/70 text-center py-3 px-4 text-base font-medium shadow-lg">
+          <span className="text-cyan-400 text-xl">🌙</span>{" "}
+          <span className="text-white text-lg">
+            It was late at night when this browser&apos;s 3D support was being
+            added...
+          </span>{" "}
+          <span className="text-pink-400 font-bold text-lg">
+            Chrome works great for now!
+          </span>{" "}
+          <span className="text-purple-400 block mt-1 text-sm">
+            (Full support coming soon 😴)
+          </span>
+        </div>
+      )}
+
       {isLoading && !isSceneReady && (
         <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/40 backdrop-blur-sm">
           <div className="w-16 h-16 border-4 border-t-cyan-500 border-r-pink-500 border-b-purple-500 border-l-transparent rounded-full animate-spin mb-4"></div>
