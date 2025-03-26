@@ -72,6 +72,28 @@ export function IFCPlayground() {
   // Toggle dark mode
   const toggleDarkMode = () => {
     const newDarkMode = !isDarkMode;
+    
+    // For mobile devices, temporarily pause 3D rendering during theme change
+    if (typeof window !== "undefined") {
+      // Check if mobile device using userAgent
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // Set a flag to pause rendering
+        window.__pauseThreeRendering = true;
+        
+        // Schedule a cleanup of WebGL resources
+        if (window.__cleanupThreeResources && typeof window.__cleanupThreeResources === 'function') {
+          try {
+            window.__cleanupThreeResources();
+          } catch (e) {
+            console.warn("Failed to clean up Three.js resources:", e);
+          }
+        }
+      }
+    }
+    
+    // Update state
     setIsDarkMode(newDarkMode);
 
     // Apply dark mode to the document
@@ -84,6 +106,14 @@ export function IFCPlayground() {
     // Store preference
     if (typeof window !== "undefined") {
       localStorage.setItem("darkMode", newDarkMode ? "true" : "false");
+      
+      // Resume rendering after a short delay to allow DOM updates to complete
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        setTimeout(() => {
+          window.__pauseThreeRendering = false;
+        }, 300);
+      }
     }
   };
 
@@ -260,7 +290,7 @@ except Exception as e:
 
   // Add message to console
   const addToConsole = (message: string) => {
-    setConsoleOutput((prev) => {
+    setConsoleOutput((prev: string[]) => {
       const newConsole = [...prev, message];
       // Limit console lines based on settings
       if (newConsole.length > settings.maxConsoleLines) {
@@ -416,6 +446,40 @@ except Exception as e:
     setShowSimpleFallback(false);
   };
 
+  const handleAddConsoleMessage = (message: string) => {
+    setConsoleOutput((prev: string[]) => [...prev, message]);
+  };
+
+  const addDebugConsoleMessage = (message: string) => {
+    if (ifcWorker && typeof message === 'string') {
+      ifcWorker.debugLogs = [...(ifcWorker.debugLogs || []), message];
+    }
+  };
+
+  // Add a function to safely change tabs
+  const handleTabChange = (value: string) => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // If we're moving away from the 3D viewer tab on mobile, pause rendering
+    if (activeTab === "viewer" && value !== "viewer" && isMobile) {
+      if (window.__pauseThreeRendering !== undefined) {
+        window.__pauseThreeRendering = true;
+      }
+    }
+    
+    // Switch the tab
+    setActiveTab(value);
+    
+    // If we're going to the 3D viewer tab, add a small delay before resuming rendering
+    if (value === "viewer" && activeTab !== "viewer" && isMobile) {
+      setTimeout(() => {
+        if (window.__pauseThreeRendering !== undefined) {
+          window.__pauseThreeRendering = false;
+        }
+      }, 300);
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -508,7 +572,7 @@ except Exception as e:
             <Tabs
               defaultValue="viewer"
               value={activeTab}
-              onValueChange={setActiveTab}
+              onValueChange={handleTabChange}
               className="w-full flex flex-col h-full"
             >
               <TabsList className="w-full bg-black/50 border border-pink-500/50 p-1 rounded-xl dark:bg-gray-900/50 dark:border-cyan-500/50 shrink-0 flex-wrap">

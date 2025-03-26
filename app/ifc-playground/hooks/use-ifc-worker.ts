@@ -31,10 +31,19 @@ export function useIfcWorker() {
     if (typeof window !== "undefined" && window.Worker) {
       try {
         console.log("Creating worker...");
+        
+        // Check if we're on a mobile device
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
         workerRef.current = new Worker(
           new URL("../workers/ifc-worker.ts", import.meta.url)
         );
-        console.log("Worker created successfully");
+        console.log("Worker created successfully", isMobile ? "(mobile mode)" : "");
+
+        // For mobile devices, set up a periodic worker cleanup
+        if (isMobile) {
+          setDebugLogs((prev) => [...prev, "Mobile device detected, enabling worker memory safeguards"]);
+        }
 
         // Set up message handler
         workerRef.current.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -49,6 +58,33 @@ export function useIfcWorker() {
               setResult(data);
               setStatus("ready");
               console.log("Worker result received");
+              
+              // On mobile, consider terminating and recreating the worker after successful operation
+              // to prevent memory buildup
+              if (isMobile && status === "processing") {
+                console.log("Mobile safeguard: Scheduling worker cleanup after successful operation");
+                setTimeout(() => {
+                  if (workerRef.current && status === "ready") {
+                    console.log("Mobile safeguard: Performing scheduled worker cleanup");
+                    const oldWorker = workerRef.current;
+                    
+                    // Create a new worker first
+                    workerRef.current = new Worker(
+                      new URL("../workers/ifc-worker.ts", import.meta.url)
+                    );
+                    
+                    // Set up the same handlers
+                    workerRef.current.onmessage = oldWorker.onmessage;
+                    workerRef.current.onerror = oldWorker.onerror;
+                    
+                    // Terminate the old one
+                    oldWorker.terminate();
+                    
+                    console.log("Mobile safeguard: Worker replaced successfully");
+                    setDebugLogs((prev) => [...prev, "Mobile safeguard: Worker replaced successfully"]);
+                  }
+                }, 2000);
+              }
               break;
             case "ready":
               setStatus("ready");

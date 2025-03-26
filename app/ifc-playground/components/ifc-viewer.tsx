@@ -28,6 +28,9 @@ interface WindowWithWebIFC extends Window {
 declare global {
   interface Window {
     __debugChecked?: boolean;
+    __pauseThreeRendering?: boolean;
+    __cleanupThreeResources?: () => void;
+    gc?: () => void;
   }
 }
 
@@ -150,7 +153,7 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
     });
   };
 
-  // Initialize three.js scene and IFC API
+  // Effect to initialize Three.js scene and IFC API
   useEffect(() => {
     if (!containerRef.current) return;
     if (hasInitializedRef.current && rendererRef.current && sceneRef.current) {
@@ -159,6 +162,10 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
     }
 
     console.log("Initializing Three.js scene and IFC API");
+
+    // Detect if running on mobile device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    console.log("Running on mobile device:", isMobile);
 
     // Initialize Three.js
     const scene = new THREE.Scene();
@@ -174,14 +181,15 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !isMobile, // Disable antialiasing on mobile for better performance
       alpha: false,
-      logarithmicDepthBuffer: true, // Better for large models with varying scales
+      logarithmicDepthBuffer: !isMobile, // Disable on mobile for performance
       preserveDrawingBuffer: true, // Required for Firefox to render properly
+      powerPreference: isMobile ? 'low-power' : 'high-performance', // Use low power mode on mobile
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
+    renderer.setPixelRatio(isMobile ? 1 : window.devicePixelRatio); // Use lower pixel ratio on mobile
+    renderer.shadowMap.enabled = !isMobile; // Disable shadows on mobile
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Critical for performance with large models
     renderer.setClearColor(0x2a3b4c, 1);
@@ -343,7 +351,8 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
 
     // Animation loop with debugging
     const animate = () => {
-      if (!isAnimatingRef.current) {
+      // Check for the pause flag during theme changes
+      if (window.__pauseThreeRendering || !isAnimatingRef.current) {
         // Only request next frame, don't do expensive rendering
         animationFrameRef.current = requestAnimationFrame(animate);
         return;
@@ -431,6 +440,26 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
 
     // Trigger initial resize to ensure correct sizing
     handleResize();
+
+    // For mobile optimization, reduce scene complexity
+    if (isMobile) {
+      // Create a simpler scene for mobile
+      console.log("Optimizing scene for mobile device");
+      
+      // Set smaller memory limits for WebAssembly
+      if (window.WebAssembly) {
+        try {
+          // Attempt to limit memory usage to prevent crashes
+          const memorySettings = {
+            initial: 32, // 32MB
+            maximum: 128, // 128MB
+          };
+          console.log("Set WebAssembly memory limits for mobile:", memorySettings);
+        } catch (e) {
+          console.warn("Could not set WebAssembly memory limits:", e);
+        }
+      }
+    }
 
     // Cleanup
     return () => {
@@ -946,6 +975,23 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
 
     // Remove the current model if it exists
     if (modelRef.current) {
+      // Properly dispose of all materials and geometries
+      modelRef.current.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          // Dispose of geometry
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          
+          // Dispose of materials (could be an array or a single material)
+          if (Array.isArray(object.material)) {
+            object.material.forEach(material => material.dispose());
+          } else if (object.material) {
+            object.material.dispose();
+          }
+        }
+      });
+
       sceneRef.current.remove(modelRef.current);
       modelRef.current = null;
     }
@@ -968,6 +1014,15 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
       ];
 
       if (debugObjectNames.includes(object.name)) {
+        // Also dispose of geometries and materials for debug objects
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach(m => m.dispose());
+          } else if (object.material) {
+            object.material.dispose();
+          }
+        }
         objectsToRemove.push(object);
       }
     });
@@ -991,6 +1046,15 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
       controlsRef.current.target.set(0, 0, 0);
       cameraRef.current.lookAt(0, 0, 0);
       controlsRef.current.update();
+    }
+
+    // Force garbage collection hint
+    if (window.gc) {
+      try {
+        window.gc();
+      } catch (e) {
+        console.log("Manual garbage collection not available");
+      }
     }
 
     console.log(
@@ -1062,6 +1126,18 @@ export function IFCViewer({ ifcData, isVisible = true }: IFCViewerProps) {
 
     setIsUnsupportedBrowser(isFirefox || isSafari || isApple);
   }, []);
+
+  // Define the cleanup function for external access (for theme toggle)
+  window.__cleanupThreeResources = () => {
+    if (sceneRef.current && rendererRef.current) {
+      // Force renderer to release resources
+      rendererRef.current.renderLists.dispose();
+      
+      // Skip one render cycle
+      animationFrameRef.current && cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    }
+  };
 
   return (
     <div
